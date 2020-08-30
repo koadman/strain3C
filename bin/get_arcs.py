@@ -9,11 +9,20 @@ import numpy
 
 CONTIG_MARGIN = 200
 MIN_SINGLECOPY_LENGTH = 20000
-target_contig = "edge_3"
 target_left = 0
-target_right = 50000
+target_right = 500000000
+
 gfa = gfapy.Gfa.from_file(sys.argv[1])
 vcf_in = pysam.VariantFile(sys.argv[2])
+bam = pysam.AlignmentFile(sys.argv[3], "rb" )
+id_map_file = open(sys.argv[4], 'r')
+target_contig_id = sys.argv[5]
+
+# find the target contig
+id_map_json = json.load(id_map_file)
+for contig in id_map_json:
+    if id_map_json[contig] == target_contig_id:
+        target_contig = contig
 
 # get the reference sequences
 ref_seqs = {}
@@ -36,7 +45,6 @@ for rec in vcf_in.fetch():
 
 print("found "+str(len(variants))+" variants")
 
-bam = pysam.AlignmentFile(sys.argv[3], "rb" )
 local_var_counts = {}
 hic_var_counts = {}
 HIC_MIN_DIST = 800 # reads separated by more than this many bp are treated as Hi-C pairs
@@ -144,7 +152,7 @@ print("local_minor allele links: "+str(local_minor))
 
 dat['subsample'] = 10
 
-with open('standat.json', 'w') as json_file:
+with open(target_contig_id+'.standat.json', 'w') as json_file:
     json.dump(dat, json_file)
 
 #l = 0

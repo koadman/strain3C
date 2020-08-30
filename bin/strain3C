@@ -22,8 +22,9 @@ input:
 	file(bam) from bam
 output:
 	file('*.bam') into contig_bams mode('flatten')
+	file('id_map.json') into contig_ID_map
 """
-bam_per_contig.py ${gfa} ${bam} contig_
+bam_per_contig.py ${gfa} ${bam} id_map.json
 """
 }
 
@@ -33,20 +34,22 @@ input:
 	file(bam) from contig_bams
 	file(vcf) from vcf
 	file(vcf_tbi) from vcf_tbi
+	file(id_map) from contig_ID_map
 output:
-	file("*.json") into standat1 mode('flatten')
-	file("*.json") into standat2 mode('flatten')
+	file("contig*.json") into standat mode('flatten')
+	file("contig*.json") into standat2 mode('flatten')
 """
-get_arcs.py ${gfa} ${vcf} ${bam}
+CONTIG=`basename ${bam} .bam`
+ get_arcs.py ${gfa} ${vcf} ${bam} ${id_map} \$CONTIG
 """
 }
 
 process estimate_strain_counts {
 input:
-	file(stanjson) from standat1
+	file(stanjson) from standat
 	each rep from Channel.from(1..params.strain_count_replicates)
 output:
-	file('*.csv') into strain_estimate_out
+	set file('*.csv') into strain_estimate_out
 """
 BNAME=`basename ${stanjson} .json`
 add_straincount.py ${stanjson} ${params.maxstrains} \$BNAME.${rep}.json
@@ -54,21 +57,25 @@ genotypes3C variational adapt engaged=0 eta=1 tol_rel_obj=0.001 output_samples=1
 """
 }
 
-strain_count_models = strain_estimate_out.collect()
+strain_estimate_out.map{ f1 -> [f1.getName().toString().split('.standat.')[0], f1] }.groupTuple().set{ strain_count_models }
+
+//strain_count_models = strain_estimate_out.collect()
 process get_strain_count {
 input:
-	file(strain_models) from strain_count_models
+	set contig_name,file('*') from strain_count_models
 output:
-	file('strain_count.txt') into strain_count_file
+	set contig_name,file('strain_count.txt') into strain_count_file
 """
- select_strain_count.R ${strain_models} ${params.abundance_noise_threshold}
+ select_strain_count.R *.csv ${params.abundance_noise_threshold}
 """
 }
 
+standat2.map{ f1 -> [f1.getName().toString().split('.standat.')[0], f1] }.groupTuple().set{ standat3 }
+strain_count_file.join(standat3).set{ scsd }
+
 process infer_contig_haplotypes {
 input:
-	file(stanjson) from standat2
-	file(esc) from strain_count_file
+	set contig_name, file(esc), file(stanjson) from scsd
 	each rep from Channel.from(1..params.replicates)
 output:
 	file('*.csv') into model_out
