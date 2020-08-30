@@ -27,7 +27,7 @@ bam_per_contig.py ${gfa} ${bam} contig_
 """
 }
 
-process strains_per_contig {
+process variants_per_contig {
 input:
 	file(gfa) from gfa2
 	file(bam) from contig_bams
@@ -50,7 +50,7 @@ output:
 """
 BNAME=`basename ${stanjson} .json`
 add_straincount.py ${stanjson} ${params.maxstrains} \$BNAME.${rep}.json
-genotypes_3C variational adapt engaged=0 eta=1 tol_rel_obj=0.001 output_samples=1000 data file=\$BNAME.${rep}.json output file=${stanjson}.${rep}.csv
+genotypes3C variational adapt engaged=0 eta=1 tol_rel_obj=0.001 output_samples=1000 data file=\$BNAME.${rep}.json output file=${stanjson}.${rep}.csv
 """
 }
 
@@ -59,26 +59,29 @@ process get_strain_count {
 input:
 	file(strain_models) from strain_count_models
 output:
-	file("strain_count.txt") into strain_count
+	file('strain_count.txt') into strain_count_file
 """
-select_strain_count.R ${strain_models} ${params.abundance_noise_threshold}
+ select_strain_count.R ${strain_models} ${params.abundance_noise_threshold}
 """
 }
 
-
-
-process strain_model {
+process infer_contig_haplotypes {
 input:
 	file(stanjson) from standat2
+	file(esc) from strain_count_file
 	each rep from Channel.from(1..params.replicates)
-	file(strain_count) from strain_count
 output:
 	file('*.csv') into model_out
 """
-K=`cat ${strain_count}`
+KKK=`cat ${esc}`
+let KKKm=\$KKK-1
+let KKKp=\$KKK+2
 BNAME=`basename ${stanjson} .json`
-add_straincount.py ${stanjson} \$K \$BNAME.\$K.json
-genotypes_3C variational adapt engaged=0 eta=1 tol_rel_obj=0.001 output_samples=100 data file=\$BNAME.\$K.json output file=${stanjson}.\$K.${rep}.csv
+for K in \$(eval echo "{\$KKKm..\$KKKp}")
+do
+    add_straincount.py ${stanjson} \$K \$BNAME.\$K.json
+    genotypes3C variational adapt engaged=0 eta=1 tol_rel_obj=0.001 output_samples=100 data file=\$BNAME.\$K.json output file=${stanjson}.\$K.${rep}.csv
+done
 """
 }
 

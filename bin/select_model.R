@@ -27,5 +27,4 @@ names(loos)<-commandArgs(TRUE)
 model_comp <- loo_compare(loos)
 model_comp
 best_model <- row.names(model_comp)[1]
-write.table(best_model, file = "best_model.txt", sep = "", row.names=F, col.names=F)
-
+write.table(best_model, file = "best_model.txt", sep = "", row.names=F, col.names=F, quote=F)
