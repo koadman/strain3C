@@ -1,0 +1,98 @@
+#!/usr/bin/env nextflow
+/* 
+ * workflow to resolve strain genomes from an assembly graph
+ * using Hi-C data to link the variants in each strain
+ */
+
+params.maxstrains = 30
+params.replicates = 5
+params.strain_count_replicates = 3
+// ignore strains below this relative abundance. TODO: choose a smart value for this based on contig coverage
+params.abundance_noise_threshold = 0.005
+
+gfa1 = Channel.fromPath(params.gfa)
+gfa2 = Channel.fromPath(params.gfa)
+bam = Channel.fromPath(params.bam)
+vcf = Channel.fromPath(params.vcf)
+vcf_tbi = Channel.fromPath(params.vcf+'.tbi')
+
+process bam_per_contig {
+input:
+	file(gfa) from gfa1
+	file(bam) from bam
+output:
+	file('*.bam') into contig_bams mode('flatten')
+"""
+bam_per_contig.py ${gfa} ${bam} contig_
+"""
+}
+
+process strains_per_contig {
+input:
+	file(gfa) from gfa2
+	file(bam) from contig_bams
+	file(vcf) from vcf
+	file(vcf_tbi) from vcf_tbi
+output:
+	file("*.json") into standat1 mode('flatten')
+	file("*.json") into standat2 mode('flatten')
+"""
+get_arcs.py ${gfa} ${vcf} ${bam}
+"""
+}
+
+process estimate_strain_counts {
+input:
+	file(stanjson) from standat1
+	each rep from Channel.from(1..params.strain_count_replicates)
+output:
+	file('*.csv') into strain_estimate_out
+"""
+BNAME=`basename ${stanjson} .json`
+add_straincount.py ${stanjson} ${params.maxstrains} \$BNAME.${rep}.json
+genotypes_3C variational adapt engaged=0 eta=1 tol_rel_obj=0.001 output_samples=1000 data file=\$BNAME.${rep}.json output file=${stanjson}.${rep}.csv
+"""
+}
+
+strain_count_models = strain_estimate_out.collect()
+process get_strain_count {
+input:
+	file(strain_models) from strain_count_models
+output:
+	file("strain_count.txt") into strain_count
+"""
+select_strain_count.R ${strain_models} ${params.abundance_noise_threshold}
+"""
+}
+
+
+
+process strain_model {
+input:
+	file(stanjson) from standat2
+	each rep from Channel.from(1..params.replicates)
+	file(strain_count) from strain_count
+output:
+	file('*.csv') into model_out
+"""
+K=`cat ${strain_count}`
+BNAME=`basename ${stanjson} .json`
+add_straincount.py ${stanjson} \$K \$BNAME.\$K.json
+genotypes_3C variational adapt engaged=0 eta=1 tol_rel_obj=0.001 output_samples=100 data file=\$BNAME.\$K.json output file=${stanjson}.\$K.${rep}.csv
+"""
+}
+
+all_models = model_out.collect()
+process best_contig_models {
+input:
+	file(strain_models) from all_models
+output:
+	file('*best') into best_model
+"""
+select_model.R ${strain_models}
+cp `cat best_model.txt` `cat best_model.txt`.best
+"""
+}
+
+
+
