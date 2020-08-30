@@ -11,3 +11,7 @@ strain3C is a workflow to resolve strain genomes from metagenomic data. strain3C
 ```
 ./strain3C --gfa polished.gfa --bam hic.namesorted.bam --vcf hic.vcf.gz -resume
 ```
+
+## WARNING
+
+strain3C is currently a work in progress and UNLIKELY TO WORK CORRECTLY. Please contact the authors if you are interested in using it or contributing to its development.
